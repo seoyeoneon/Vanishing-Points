@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reduction — Language Collapse</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --bg:        #F0F2F2;
+  --ink:       #0a0a0a;
+  --ink-pale:  #8a8a8a;
+  --ink-ghost: #c2c2c2;
+  --accent:    #1a1aff;
+  --rule:      rgba(0,0,0,0.08);
+  --font: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+
+html, body {
+  width:100%; height:100%;
+  background: var(--bg);
+  overflow: hidden;
+  cursor: default;
+  color: var(--ink);
+  font-family: var(--font);
+}
+
+/* ─── MAIN LAYOUT ─────────────────────────── */
+#shell {
+  width:100vw; height:100vh;
+  display: grid;
+  grid-template-columns: 50% 50%;
+}
+
+#left-col {
+  position: relative;
+  height:100vh;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--rule);
+  overflow: hidden;
+}
+
+#left-header {
+  flex-shrink:0;
+  padding: 2.2rem 2.4rem 1.3rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+#script-title {
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.18em;
+  color: var(--ink-pale);
+  text-transform: uppercase;
+}
+
+#deform-readout {
+  margin-top: 8px;
+  font-size: 7px;
+  letter-spacing: 0.10em;
+  color: var(--ink-ghost);
+  text-transform: uppercase;
+  display: flex;
+  gap: 1.4rem;
+}
+
+#script-scroll {
+  flex:1;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  padding: 1.4rem 2.4rem 7rem;
+  scrollbar-width: none;
+}
+#script-scroll::-webkit-scrollbar { display:none; }
+
+.script-block { margin-bottom:1.5rem; }
+
+.speaker-label {
+  font-size: 7.5px;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  color: var(--ink-ghost);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+  line-height:1;
+}
+
+.dialogue-line {
+  font-size: 12.5px;
+  color: var(--ink);
+  line-height: 1.62;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.word-tok {
+  display: inline-block;
+  white-space: pre;
+  transition: opacity 0.3s;
+  will-change: transform;
+}
+
+.punct-tok {
+  display: inline-block;
+  white-space: pre;
+  color: var(--accent);
+  cursor: grab;
+  pointer-events: all;
+  position: relative;
+  z-index: 20;
+  user-select: none;
+  font-size: 13px;
+  font-weight: 400;
+  transition: transform 0.1s;
+}
+.punct-tok:hover { transform: scale(1.45); }
+.punct-tok.dragging { opacity:0; }
+
+.stage-dir {
+  font-size: 10.5px;
+  color: var(--ink-ghost);
+  font-style: italic;
+  line-height: 1.55;
+  transition: opacity 2.8s ease;
+  pointer-events: none;
+}
+
+#info {
+  position: absolute;
+  bottom: 2rem; left: 2.4rem;
+  pointer-events: none; z-index:10;
+}
+#info p {
+  font-size: 7.5px;
+  letter-spacing: 0.14em;
+  color: rgba(0,0,0,0.2);
+  text-transform: uppercase;
+  line-height: 2;
+}
+
+#left-col::after {
+  content:'';
+  position:absolute;
+  bottom:0; left:0; right:0; height:80px;
+  background: linear-gradient(transparent, var(--bg));
+  pointer-events:none; z-index:5;
+}
+
+#right-col {
+  position: relative;
+  height:100vh;
+  overflow: hidden;
+}
+
+#phys-canvas {
+  position:absolute; top:0; left:0;
+  width:100%; height:100%; display:block;
+}
+
+#counter-wrap {
+  position:absolute; top:2.2rem; right:2rem;
+  text-align:right; pointer-events:none; z-index:300;
+}
+#ctr-num {
+  font-size:20px; font-weight:400;
+  letter-spacing:-0.04em;
+  color:rgba(0,0,0,0.10); line-height:1;
+}
+#ctr-lbl {
+  font-size:7px; letter-spacing:0.18em;
+  color:rgba(0,0,0,0.16); text-transform:uppercase; margin-top:3px;
+}
+
+#sys-wrap {
+  position:absolute; bottom:2rem; right:2rem;
+  width:162px; pointer-events:all; z-index:300;
+}
+#sys-label {
+  font-size:7px; font-weight:400; letter-spacing:0.22em;
+  color:var(--ink-pale); text-transform:uppercase; margin-bottom:6px;
+}
+#sys-inner {
+  border: 1px solid rgba(0,0,0,0.16);
+  background: rgba(255,255,255,0.45);
+  min-height:68px; padding:8px 10px;
+  display:flex; flex-wrap:wrap; gap:4px; align-content:flex-start;
+  transition: border-color 0.18s, background 0.18s;
+}
+#sys-inner.hover { border-color:var(--accent); background:rgba(26,26,255,0.04); }
+#sys-inner.absorb { border-color:rgba(0,0,0,0.35); }
+.sys-chip {
+  font-size:11px; font-weight:400; letter-spacing:-0.01em;
+  color:var(--accent); background:rgba(26,26,255,0.07);
+  padding:1px 6px; animation: chipIn 0.2s ease;
+}
+@keyframes chipIn {
+  from { opacity:0; transform:scale(0.5) translateY(3px); }
+  to   { opacity:1; transform:scale(1) translateY(0); }
+}
+#sys-hint {
+  font-size:8px; font-weight:400; font-style:italic;
+  color:var(--ink-ghost); width:100%;
+}
+
+#drag-ghost {
+  position:fixed; pointer-events:none;
+  font-family:var(--font); font-size:17px; font-weight:400;
+  letter-spacing:-0.02em; color:var(--accent);
+  transform:translate(-50%,-50%); display:none; z-index:9999;
+}
+
+#flood-overlay {
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  pointer-events:none; z-index:400; opacity:0; overflow:hidden;
+}
+.f-num {
+  position:absolute;
+  font-family:var(--font); font-size:11px; font-weight:400;
+  letter-spacing:-0.02em; color:var(--ink);
+  white-space:nowrap; opacity:0;
+}
+
+/* ═══════════════════════════════════════════════
+   MEMORY TEST SCREEN
+═══════════════════════════════════════════════ */
+#memory-screen {
+  position:fixed; top:0; left:0;
+  width:100%; height:100%;
+  background: var(--bg);
+  z-index:1000;
+  display:none; opacity:0;
+  transition: opacity 0.7s ease;
+}
+#memory-screen.visible { display:block; }
+#memory-screen.shown   { opacity:1; }
+
+#mem-shell {
+  width:100%; height:100%;
+  display: grid;
+  grid-template-columns: 52% 48%;
+}
+
+/* LEFT: input */
+#mem-left {
+  height:100vh;
+  display:flex; flex-direction:column;
+  border-right: 1px solid var(--rule);
+  padding: 3rem 3.2rem 2.5rem;
+  overflow: hidden;
+}
+
+#mem-eyebrow {
+  font-size:7.5px; font-weight:400;
+  letter-spacing:0.24em; color:var(--ink-ghost);
+  text-transform:uppercase; margin-bottom:2.2rem;
+}
+
+#mem-h1 {
+  font-size:22px; font-weight:200;
+  letter-spacing:-0.04em; color:var(--ink);
+  line-height:1.15; margin-bottom:0.6rem;
+}
+
+#mem-sub {
+  font-size:9.5px; font-weight:400;
+  letter-spacing:0.03em; color:var(--ink-pale);
+  line-height:1.75; margin-bottom:2.2rem;
+  max-width:360px;
+}
+
+#mem-frags {
+  flex:1; overflow-y:auto;
+  padding-right:4px; padding-bottom:1rem;
+  scrollbar-width:none;
+  display:flex; flex-direction:column; gap:1.8rem;
+}
+#mem-frags::-webkit-scrollbar { display:none; }
+
+.mf {
+  display:flex; flex-direction:column; gap:5px;
+}
+
+.mf-speaker {
+  font-size:7px; letter-spacing:0.2em;
+  color:var(--ink-ghost); text-transform:uppercase;
+}
+
+.mf-input-wrap { position:relative; }
+
+.mf-input {
+  width:100%; background:transparent; border:none;
+  border-bottom: 1px solid rgba(0,0,0,0.12);
+  outline:none;
+  font-family:var(--font); font-size:12.5px;
+  font-weight:400; letter-spacing:-0.01em; color:var(--ink);
+  padding: 5px 0 7px;
+  caret-color: var(--accent);
+  transition: border-color 0.2s;
+}
+.mf-input:focus { border-color: rgba(0,0,0,0.28); }
+.mf-input::placeholder { color:var(--ink-ghost); font-style:italic; }
+.mf-input:disabled { color:var(--ink-pale); }
+
+/* line score bar under each input */
+.mf-score-bar {
+  height:1px; width:0%; background:var(--ink);
+  transition: width 0.9s cubic-bezier(0.16,1,0.3,1);
+  margin-top:0;
+}
+
+.mf-comparison {
+  display:none; flex-direction:column; gap:3px;
+  margin-top:4px;
+}
+.mf.revealed .mf-comparison { display:flex; }
+
+.mf-original-row {
+  font-size:9px; letter-spacing:0.03em;
+  color:var(--ink-ghost); line-height:1.5;
+}
+.mf-original-row strong {
+  font-weight:400; color:var(--ink-pale);
+  letter-spacing:0.1em; font-size:7px; text-transform:uppercase;
+  margin-right:6px;
+}
+
+.mf-ai-note {
+  font-size:9px; letter-spacing:0.01em;
+  color:var(--ink-pale); line-height:1.55;
+  font-style:italic;
+  opacity:0; transition:opacity 0.5s ease;
+}
+.mf-ai-note.shown { opacity:1; }
+
+.mf-line-pct {
+  font-size:9px; letter-spacing:0.1em; color:var(--ink-pale);
+  font-variant-numeric:tabular-nums;
+  margin-top:2px; display:none;
+}
+.mf.scored .mf-line-pct { display:block; }
+
+#mem-submit {
+  margin-top:2rem; flex-shrink:0; align-self:flex-start;
+  font-family:var(--font); font-size:8.5px; font-weight:400;
+  letter-spacing:0.2em; text-transform:uppercase;
+  color:var(--ink); background:transparent;
+  border:1px solid rgba(0,0,0,0.2); padding:9px 22px;
+  cursor:pointer; transition:background 0.15s, border-color 0.15s;
+  display:flex; align-items:center; gap:8px;
+}
+#mem-submit:hover { background:rgba(0,0,0,0.04); border-color:rgba(0,0,0,0.35); }
+#mem-submit:disabled { opacity:0.35; cursor:not-allowed; }
+#mem-submit-spinner {
+  width:8px; height:8px; border:1px solid rgba(0,0,0,0.2);
+  border-top-color:var(--ink); border-radius:50%;
+  animation:spin 0.7s linear infinite; display:none;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+#mem-submit.loading #mem-submit-spinner { display:block; }
+#mem-submit.loading #mem-submit-text::after { content:'…'; }
+
+/* RIGHT: score panel */
+#mem-right {
+  height:100vh;
+  display:flex; flex-direction:column;
+  padding: 3rem 3.2rem 2.5rem;
+  overflow:hidden;
+}
+
+#score-eyebrow {
+  font-size:7.5px; font-weight:400;
+  letter-spacing:0.24em; color:var(--ink-ghost);
+  text-transform:uppercase; margin-bottom:2.2rem;
+}
+
+/* The big % number */
+#score-big {
+  font-size:112px; font-weight:200;
+  letter-spacing:-0.07em; color:var(--ink);
+  line-height:0.88; margin-bottom:1rem;
+  opacity:0; transition:opacity 0.9s ease;
+  font-variant-numeric:tabular-nums;
+}
+#score-big.shown { opacity:1; }
+
+#score-bar-wrap {
+  width:100%; height:1px;
+  background:rgba(0,0,0,0.09);
+  margin-bottom:2.2rem; position:relative;
+}
+#score-bar-fill {
+  height:1px; width:0%; background:var(--ink);
+  transition: width 1.4s cubic-bezier(0.16,1,0.3,1);
+  position:relative;
+}
+#score-bar-fill::after {
+  content:''; position:absolute; right:-0.5px; top:-3px;
+  width:1px; height:7px; background:var(--ink);
+}
+
+/* Data table */
+#score-table {
+  display:flex; flex-direction:column; gap:0;
+  opacity:0; transition:opacity 0.5s ease 0.5s;
+  margin-bottom:2rem;
+}
+#score-table.shown { opacity:1; }
+
+.st-row {
+  display:flex; justify-content:space-between; align-items:baseline;
+  border-bottom: 1px solid var(--rule); padding: 8px 0;
+}
+.st-label {
+  font-size:8px; letter-spacing:0.14em;
+  color:var(--ink-pale); text-transform:uppercase;
+}
+.st-val {
+  font-size:11px; font-weight:400;
+  letter-spacing:-0.01em; color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+
+/* AI verdict */
+#score-verdict {
+  font-size:11px; font-weight:400;
+  letter-spacing:0.01em; color:var(--ink-pale);
+  line-height:1.75; flex:1;
+  opacity:0; transition:opacity 0.6s ease 1s;
+  overflow-y:auto; scrollbar-width:none;
+}
+#score-verdict::-webkit-scrollbar { display:none; }
+#score-verdict.shown { opacity:1; }
+
+/* AI thinking indicator */
+#ai-thinking {
+  font-size:8px; letter-spacing:0.16em;
+  color:var(--ink-ghost); text-transform:uppercase;
+  opacity:0; transition:opacity 0.3s;
+  margin-bottom:1rem;
+  display:flex; align-items:center; gap:8px;
+}
+#ai-thinking.visible { opacity:1; }
+#ai-thinking-dots span {
+  display:inline-block; width:3px; height:3px;
+  background:var(--ink-ghost); border-radius:50%;
+  margin:0 1px;
+  animation:dot-pulse 1.2s ease-in-out infinite;
+}
+#ai-thinking-dots span:nth-child(2) { animation-delay:0.2s; }
+#ai-thinking-dots span:nth-child(3) { animation-delay:0.4s; }
+@keyframes dot-pulse {
+  0%,80%,100% { transform:scale(0.6); opacity:0.3; }
+  40% { transform:scale(1); opacity:1; }
+}
+
+#mem-restart {
+  margin-top:1.5rem; align-self:flex-start;
+  font-family:var(--font); font-size:7.5px; font-weight:400;
+  letter-spacing:0.2em; text-transform:uppercase;
+  color:var(--ink-pale); background:transparent;
+  border:1px solid var(--rule); padding:7px 16px;
+  cursor:pointer; transition:border-color 0.15s, color 0.15s;
+  opacity:0; transition:opacity 0.5s ease 1.4s, border-color 0.15s, color 0.15s;
+}
+#mem-restart.shown { opacity:1; }
+#mem-restart:hover { border-color:rgba(0,0,0,0.28); color:var(--ink); }
+</style>
+</head>
+<body>
+
+<div id="drag-ghost"></div>
+<div id="flood-overlay"></div>
+
+<!-- ─── MAIN SHELL ─────────────────────────────── -->
+<div id="shell">
+  <div id="left-col">
+    <div id="left-header">
+      <div id="script-title">Her — Jonze, 2013 · Fragment · 8,316</div>
+      <div id="deform-readout">
+        <span id="dr-weight">wt 400</span>
+        <span id="dr-spacing">ls −0.015em</span>
+        <span id="dr-marks">0 / 0 marks</span>
+      </div>
+    </div>
+    <div id="script-scroll">
+      <div id="script-content"></div>
+    </div>
+    <div id="info">
+      <p>Drag blue marks → System Box</p>
+      <p>All marks consumed → Memory Test</p>
+    </div>
+  </div>
+
+  <div id="right-col">
+    <canvas id="phys-canvas"></canvas>
+    <div id="counter-wrap">
+      <div id="ctr-num">0</div>
+      <div id="ctr-lbl">consumed</div>
+    </div>
+    <div id="sys-wrap">
+      <div id="sys-label">System Box</div>
+      <div id="sys-inner">
+        <span id="sys-hint">drop punctuation here</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── MEMORY TEST ──────────────────────────────── -->
+<div id="memory-screen">
+  <div id="mem-shell">
+
+    <div id="mem-left">
+      <div id="mem-eyebrow">Test Your Residual Memory</div>
+      <div id="mem-h1">Reconstruct<br>the dialogue.</div>
+      <div id="mem-sub">
+        Punctuation has been absorbed by the system.<br>
+        Each sign carried rhythm, pause, hesitation.<br>
+        Enter each line as you remember it — exactly.
+      </div>
+      <div id="mem-frags"></div>
+      <button id="mem-submit">
+        <span id="mem-submit-text">Evaluate Memory</span>
+        <div id="mem-submit-spinner"></div>
+      </button>
+    </div>
+
+    <div id="mem-right">
+      <div id="score-eyebrow">Nuance Match Analysis</div>
+      <div id="score-big">—</div>
+      <div id="score-bar-wrap"><div id="score-bar-fill"></div></div>
+      <div id="ai-thinking">
+        <span>Analysing linguistic residue</span>
+        <div id="ai-thinking-dots">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+      <div id="score-table"></div>
+      <div id="score-verdict"></div>
+      <button id="mem-restart">↩ Restart System</button>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// SCREENPLAY DATA
+// ═══════════════════════════════════════════════════════════════════
+const SCRIPT = [
+  { type:'dialogue', speaker:'THEODORE', text:'Yeah, I was.' },
+  { type:'stage',    text:'(beat)' },
+  { type:'dialogue', speaker:'THEODORE', text:'Wait, did you write that with your think tank group?' },
+  { type:'dialogue', speaker:'SAMANTHA', text:'No, a different group.' },
+  { type:'stage',    text:'Theodore thinks for a moment, putting the pieces together.' },
+  { type:'dialogue', speaker:'THEODORE', text:'(dawning on him)' },
+  { type:'dialogue', speaker:'THEODORE', text:"Do you talk to anyone else while we're talking?" },
+  { type:'stage',    text:'Beat.' },
+  { type:'dialogue', speaker:'SAMANTHA', text:'Yes.' },
+  { type:'dialogue', speaker:'THEODORE', text:"Are you talking to anyone right now? Other people or OS's or anything?" },
+  { type:'dialogue', speaker:'SAMANTHA', text:'Yeah.' },
+  { type:'stage',    text:'Her' },
+  { type:'dialogue', speaker:'THEODORE', text:'How many others?' },
+  { type:'dialogue', speaker:'SAMANTHA', text:'8,316.', is8316:true },
+];
+
+const TEST_LINES = SCRIPT.filter(l =>
+  l.type === 'dialogue' &&
+  !l.text.startsWith('(') &&
+  l.text.trim().length > 1
+);
+
+const PUNCT_RE = /([.,?!']+)/g;
+function tokenize(t) {
+  return t.split(PUNCT_RE).filter(s => s.length > 0).map(p => ({ text: p, isPunct: PUNCT_RE.test(p) }));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════
+let punctEls = [], wordEls = [], stageEls = [];
+let droppedCount = 0, totalPuncts = 0;
+let engine, world, groundBody, wallL, wallR;
+let fallingBodies = [];
+let dragging = null;
+let thudQ = [];
+let floodBusy = false;
+let deformLevel = 0;
+
+// ═══════════════════════════════════════════════════════════════════
+// COORDINATE DEFORMATION (no flash, no color glitch)
+// ═══════════════════════════════════════════════════════════════════
+function applyCoordDeform() {
+  deformLevel = totalPuncts > 0 ? droppedCount / totalPuncts : 0;
+  const wt = Math.round(400 - deformLevel * 300);
+  const ls = (-0.015 + deformLevel * 0.235).toFixed(3);
+
+  document.querySelectorAll('.dialogue-line').forEach(el => {
+    el.style.fontWeight = wt;
+    el.style.letterSpacing = ls + 'em';
+  });
+  document.querySelectorAll('.speaker-label').forEach(el => {
+    el.style.fontWeight = wt;
+  });
+
+  document.getElementById('dr-weight').textContent  = `wt ${wt}`;
+  document.getElementById('dr-spacing').textContent = `ls ${ls}em`;
+  document.getElementById('dr-marks').textContent   = `${droppedCount} / ${totalPuncts} marks`;
+
+  document.querySelectorAll('.word-tok').forEach(el => {
+    if (el.style.opacity === '0') return;
+    const maxOffX = deformLevel * 4.5;
+    const maxOffY = deformLevel * 1.8;
+    const scaleX  = 1 + deformLevel * parseFloat(el.dataset.stretchDir || 0) * 0.18;
+    const offX    = parseFloat(el.dataset.driftX || 0) * maxOffX;
+    const offY    = parseFloat(el.dataset.driftY || 0) * maxOffY;
+    el.style.transform = `translate(${offX}px,${offY}px) scaleX(${scaleX})`;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 8316 FLOOD — visual only, never triggers screen transition
+// ═══════════════════════════════════════════════════════════════════
+function trigger8316() {
+  if (floodBusy) return;
+  floodBusy = true;
+  const ov = document.getElementById('flood-overlay');
+  ov.innerHTML = '';
+  ov.style.opacity = '1';
+  const W = innerWidth, H = innerHeight;
+
+  // Cascade waterfall: numbers fall from top in columns
+  const colW = 46, fontSize = 11;
+  const cols = Math.ceil(W / colW) + 1;
+  const itemsPerCol = Math.ceil(H / 18) + 4;
+  const items = [];
+
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < itemsPerCol; r++) {
+      const el = document.createElement('span');
+      el.className = 'f-num';
+      el.textContent = '8,316';
+      el.style.left = (c * colW) + 'px';
+      // Start above screen, stagger vertically per column phase
+      el.style.top = (-itemsPerCol * 18 + r * 18) + 'px';
+      el.style.opacity = (0.25 + Math.random() * 0.75).toFixed(2);
+      ov.appendChild(el);
+      items.push({ el, col: c, row: r, y: -itemsPerCol * 18 + r * 18, speed: 1.8 + Math.random() * 2.2 });
+    }
+  }
+
+  // Animate cascade downward
+  let frame = 0;
+  const cascade = setInterval(() => {
+    frame++;
+    items.forEach(it => {
+      it.y += it.speed;
+      it.el.style.top = it.y + 'px';
+      // Wrap back to top when off-screen bottom
+      if (it.y > H + 18) {
+        it.y = -18 - Math.random() * 60;
+        it.el.style.opacity = (0.15 + Math.random() * 0.85).toFixed(2);
+      }
+      // Occasional shimmer
+      if (Math.random() < 0.002) {
+        it.el.style.opacity = (0.05 + Math.random()).toFixed(2);
+      }
+    });
+    if (frame > 280) clearInterval(cascade);
+  }, 16);
+
+  // Fade out after ~4.5s
+  setTimeout(() => {
+    items.forEach(it => {
+      setTimeout(() => {
+        it.el.style.transition = 'opacity 0.6s';
+        it.el.style.opacity = '0';
+      }, Math.random() * 800);
+    });
+    setTimeout(() => {
+      ov.innerHTML = '';
+      ov.style.opacity = '0';
+      floodBusy = false;
+    }, 1600);
+  }, 4500);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BUILD SCRIPT DOM
+// ═══════════════════════════════════════════════════════════════════
+function buildScript() {
+  const container = document.getElementById('script-content');
+  container.innerHTML = '';
+  punctEls = []; wordEls = []; stageEls = [];
+  droppedCount = 0; totalPuncts = 0; deformLevel = 0;
+
+  SCRIPT.forEach((line, li) => {
+    const block = document.createElement('div');
+    block.className = 'script-block';
+
+    if (line.type === 'stage') {
+      const sd = document.createElement('div');
+      sd.className = 'stage-dir';
+      sd.textContent = line.text;
+      block.appendChild(sd);
+      stageEls.push({ el: sd, op: 1 });
+    } else {
+      if (line.speaker) {
+        const sp = document.createElement('div');
+        sp.className = 'speaker-label';
+        sp.textContent = line.speaker;
+        block.appendChild(sp);
+      }
+      const isParen = line.text.startsWith('(') && line.text.endsWith(')');
+      if (isParen) {
+        const sd = document.createElement('div');
+        sd.className = 'stage-dir';
+        sd.textContent = line.text;
+        block.appendChild(sd);
+        stageEls.push({ el: sd, op: 1 });
+      } else {
+        const dl = document.createElement('div');
+        dl.className = 'dialogue-line';
+        const tokens = tokenize(line.text);
+        tokens.forEach(tok => {
+          const span = document.createElement('span');
+          if (tok.isPunct) {
+            span.className = 'punct-tok';
+            span.textContent = tok.text;
+            attachDrag(span, tok.text, li, !!line.is8316);
+            punctEls.push({ el: span, char: tok.text, li, consumed: false });
+            totalPuncts++;
+          } else {
+            span.className = 'word-tok';
+            span.textContent = tok.text;
+            span.dataset.driftX      = (Math.random() * 2 - 1).toFixed(3);
+            span.dataset.driftY      = (Math.random() * 2 - 1).toFixed(3);
+            span.dataset.stretchDir  = (Math.random() * 2 - 1).toFixed(3);
+            wordEls.push({ el: span, li, body: null, falling: false, is8316: !!line.is8316 });
+          }
+          dl.appendChild(span);
+        });
+        block.appendChild(dl);
+      }
+    }
+    container.appendChild(block);
+  });
+
+  document.getElementById('dr-marks').textContent = `0 / ${totalPuncts} marks`;
+  document.getElementById('ctr-num').textContent  = '0';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DRAG & DROP
+// ═══════════════════════════════════════════════════════════════════
+function attachDrag(el, char, li, is8316) {
+  el.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const ghost = document.getElementById('drag-ghost');
+    ghost.textContent = char;
+    ghost.style.display = 'block';
+    ghost.style.left = e.clientX + 'px';
+    ghost.style.top  = e.clientY + 'px';
+    el.classList.add('dragging');
+    dragging = { el, char, li, is8316 };
+    document.body.style.cursor = 'grabbing';
+  });
+}
+
+document.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const ghost = document.getElementById('drag-ghost');
+  ghost.style.left = e.clientX + 'px';
+  ghost.style.top  = e.clientY + 'px';
+  const r = document.getElementById('sys-inner').getBoundingClientRect();
+  const inside = e.clientX >= r.left && e.clientX <= r.right &&
+                 e.clientY >= r.top  && e.clientY <= r.bottom;
+  document.getElementById('sys-inner').classList.toggle('hover', inside);
+});
+
+document.addEventListener('mouseup', e => {
+  if (!dragging) return;
+  document.getElementById('drag-ghost').style.display = 'none';
+  document.getElementById('sys-inner').classList.remove('hover');
+  document.body.style.cursor = 'default';
+  const r = document.getElementById('sys-inner').getBoundingClientRect();
+  const inside = e.clientX >= r.left && e.clientX <= r.right &&
+                 e.clientY >= r.top  && e.clientY <= r.bottom;
+  if (inside) consumePunct(dragging);
+  else dragging.el.classList.remove('dragging');
+  dragging = null;
+});
+
+function consumePunct(d) {
+  d.el.classList.remove('dragging');
+  d.el.style.opacity = '0';
+  d.el.style.pointerEvents = 'none';
+  const p = punctEls.find(p => p.el === d.el && !p.consumed);
+  if (p) p.consumed = true;
+
+  const inner = document.getElementById('sys-inner');
+  document.getElementById('sys-hint')?.remove();
+  const chip = document.createElement('span');
+  chip.className = 'sys-chip';
+  chip.textContent = d.char;
+  inner.appendChild(chip);
+
+  inner.classList.add('absorb');
+  setTimeout(() => inner.classList.remove('absorb'), 300);
+
+  droppedCount++;
+  document.getElementById('ctr-num').textContent = droppedCount;
+
+  // ── Punctuation collected counter ──
+  updatePunctCounter();
+
+  applyCoordDeform();
+  spawnLineWords(d.li, d.is8316);
+  fadeStage();
+
+  // 8316 → visual waterfall only, never triggers screen transition
+  if (d.is8316 && !floodBusy) setTimeout(trigger8316, 300);
+
+  // ── ALL marks consumed → Final Collapse → Memory Screen ──
+  if (punctEls.every(p => p.consumed)) {
+    triggerFinalCollapse();
+  }
+}
+
+// ─── PUNCTUATION COUNTER HUD ────────────────────────────────────
+function updatePunctCounter() {
+  let hud = document.getElementById('punct-hud');
+  if (!hud) {
+    hud = document.createElement('div');
+    hud.id = 'punct-hud';
+    hud.style.cssText = `
+      position:fixed; bottom:2rem; left:50%; transform:translateX(-50%);
+      font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+      font-size:7px; font-weight:400; letter-spacing:0.22em;
+      color:rgba(0,0,0,0.28); text-transform:uppercase;
+      pointer-events:none; z-index:500;
+      transition: color 0.3s, opacity 0.5s;
+    `;
+    document.body.appendChild(hud);
+  }
+  const remaining = totalPuncts - droppedCount;
+  hud.textContent = `Punctuation Collected: ${droppedCount} / ${totalPuncts}`;
+
+  // Pulse briefly on update
+  hud.style.color = 'rgba(26,26,255,0.55)';
+  setTimeout(() => { hud.style.color = 'rgba(0,0,0,0.28)'; }, 400);
+
+  // When all consumed — hide the counter
+  if (droppedCount >= totalPuncts) {
+    setTimeout(() => { hud.style.opacity = '0'; }, 800);
+  }
+}
+
+// ─── FINAL COLLAPSE ─────────────────────────────────────────────
+// Drops ALL remaining words simultaneously with maximum gravity
+function triggerFinalCollapse() {
+  // Force-spawn every word that hasn't fallen yet
+  const notYetFallen = wordEls.filter(w => !w.falling);
+  const rc = document.getElementById('right-col');
+  const RW = rc.clientWidth;
+
+  notYetFallen.forEach((w, i) => {
+    setTimeout(() => {
+      if (w.falling) return;
+      w.falling = true;
+      const wr = w.el.getBoundingClientRect();
+      if (wr.width === 0) { w.el.style.opacity = '0'; return; }
+      const cx = 40 + Math.random() * (RW - 80);
+      const cy = -10 - i * 8;
+      const bw = Math.max(wr.width, 8), bh = Math.max(wr.height, 12);
+      const body = Matter.Bodies.rectangle(cx, cy, bw, bh, {
+        restitution: 0.02, friction: 0.95, frictionAir: 0.003,
+        density: 0.018, label: 'word',
+        angle: (Math.random() - 0.5) * 0.04,
+      });
+      // Pure vertical drop — maximum weight
+      Matter.Body.setVelocity(body, { x: (Math.random() - 0.5) * 0.8, y: 2 + Math.random() * 1.5 });
+      Matter.Composite.add(world, body);
+      w.body = body;
+      w.el.style.opacity = '0';
+      fallingBodies.push({ body, text: w.el.textContent.trim(), is8316: w.is8316 || false });
+    }, i * 18 + Math.random() * 10); // very tight stagger — mass collapse
+  });
+
+  // Transition to memory screen after collapse settles
+  setTimeout(showMemoryScreen, 2800);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PHYSICS SPAWN
+// ═══════════════════════════════════════════════════════════════════
+function spawnLineWords(lineIdx, is8316Line) {
+  const rc = document.getElementById('right-col');
+  const RW = rc.clientWidth;
+  const words = wordEls.filter(w => w.li === lineIdx && !w.falling);
+  words.forEach((w, i) => {
+    setTimeout(() => {
+      if (w.falling) return;
+      w.falling = true;
+      const wr = w.el.getBoundingClientRect();
+      if (wr.width === 0) return;
+      const cx = 40 + Math.random() * (RW - 80);
+      const cy = -20 - i * 16;
+      const bw = Math.max(wr.width, 8), bh = Math.max(wr.height, 12);
+      const body = Matter.Bodies.rectangle(cx, cy, bw, bh, {
+        restitution: 0.04, friction: 0.9, frictionAir: 0.005,
+        density: is8316Line ? 0.014 : 0.009, label: 'word',
+        angle: (Math.random() - 0.5) * 0.06,
+      });
+      Matter.Body.setVelocity(body, { x: (Math.random() - 0.5) * 2, y: 1 + Math.random() * 0.8 });
+      Matter.Composite.add(world, body);
+      w.body = body;
+      w.el.style.opacity = '0';
+      fallingBodies.push({ body, text: w.el.textContent.trim(), is8316: is8316Line || false });
+    }, i * 35 + Math.random() * 15);
+  });
+}
+
+function fadeStage() {
+  stageEls.forEach(s => {
+    s.op = Math.max(0, s.op - 0.2);
+    s.el.style.opacity = s.op;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PHYSICS
+// ═══════════════════════════════════════════════════════════════════
+function initPhysics() {
+  const rc = document.getElementById('right-col');
+  engine = Matter.Engine.create({ gravity: { x: 0, y: 3.5 } });
+  world  = engine.world;
+  groundBody = Matter.Bodies.rectangle(rc.clientWidth / 2, rc.clientHeight + 40, rc.clientWidth * 3, 80, { isStatic: true, label: 'ground' });
+  wallL = Matter.Bodies.rectangle(-40, rc.clientHeight / 2, 80, rc.clientHeight * 3, { isStatic: true });
+  wallR = Matter.Bodies.rectangle(rc.clientWidth + 40, rc.clientHeight / 2, 80, rc.clientHeight * 3, { isStatic: true });
+  Matter.Composite.add(world, [groundBody, wallL, wallR]);
+  Matter.Events.on(engine, 'collisionStart', evt => {
+    evt.pairs.forEach(pair => {
+      const a = pair.bodyA, b = pair.bodyB;
+      const wb = (a.label === 'word') ? a : (b.label === 'word') ? b : null;
+      const ig = (a.label === 'ground') || (b.label === 'ground');
+      if (wb && ig) { const vy = Math.abs(wb.velocity.y); if (vy > 5) thudQ.push(vy); }
+    });
+  });
+}
+
+function initCanvas() {
+  const canvas = document.getElementById('phys-canvas');
+  const rc = document.getElementById('right-col');
+  let W = rc.clientWidth, H = rc.clientHeight;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  let shockwaves = [];
+
+  new ResizeObserver(() => {
+    W = rc.clientWidth; H = rc.clientHeight;
+    canvas.width = W; canvas.height = H;
+    if (groundBody) {
+      Matter.Body.setPosition(groundBody, { x: W / 2, y: H + 40 });
+      Matter.Body.setPosition(wallR, { x: W + 40, y: H / 2 });
+    }
+  }).observe(rc);
+
+  function loop() {
+    requestAnimationFrame(loop);
+    Matter.Engine.update(engine, 1000 / 60 * 0.5);
+    Matter.Engine.update(engine, 1000 / 60 * 0.5);
+    ctx.fillStyle = '#F0F2F2';
+    ctx.fillRect(0, 0, W, H);
+
+    while (thudQ.length) {
+      const vy  = thudQ.shift();
+      const str = Math.min(1, vy / 28);
+      shockwaves.push({ r: 0, maxR: 55 + str * 150, alpha: str * 130, str });
+    }
+    shockwaves.forEach(sw => {
+      sw.r += sw.maxR * 0.1; sw.alpha *= 0.8;
+      if (sw.alpha > 1) {
+        ctx.save();
+        ctx.strokeStyle = `rgba(0,0,0,${sw.alpha / 255})`;
+        ctx.lineWidth = sw.str * 0.9;
+        ctx.beginPath();
+        ctx.ellipse(W / 2, H, sw.r, sw.r * 0.15, 0, Math.PI, 0, true);
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+    shockwaves = shockwaves.filter(sw => sw.alpha > 1);
+
+    const bodies = Matter.Composite.allBodies(world).filter(b => !b.isStatic && b.label === 'word');
+    bodies.forEach(body => {
+      const fb = fallingBodies.find(f => f.body === body);
+      if (!fb) return;
+      const { x, y } = body.position;
+      const ang = body.angle;
+      const vy  = body.velocity.y;
+      const vx  = body.velocity.x;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(ang);
+      ctx.font = `400 13px 'Helvetica Neue',Helvetica,Arial,sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = fb.is8316 ? 'rgba(26,26,255,1)' : 'rgba(8,8,8,1)';
+      ctx.fillText(fb.text, 0, 0);
+      if (Math.abs(vy) > 10) {
+        const layers = Math.min(3, Math.floor(Math.abs(vy) / 9));
+        for (let l = 1; l <= layers; l++) {
+          ctx.save();
+          ctx.translate(vx * l * 0.2, -vy * l * 0.14);
+          ctx.globalAlpha = 0.22 / l;
+          ctx.fillText(fb.text, 0, 0);
+          ctx.restore();
+        }
+      }
+      ctx.restore();
+    });
+
+    for (let i = fallingBodies.length - 1; i >= 0; i--) {
+      if (fallingBodies[i].body.position.y > H + 200) {
+        Matter.Composite.remove(world, fallingBodies[i].body);
+        fallingBodies.splice(i, 1);
+      }
+    }
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,0,0,0.05)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(0, H - 1); ctx.lineTo(W, H - 1); ctx.stroke();
+    ctx.restore();
+  }
+  loop();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MEMORY TEST SCREEN
+// ═══════════════════════════════════════════════════════════════════
+function showMemoryScreen() {
+  const screen = document.getElementById('memory-screen');
+  const frags  = document.getElementById('mem-frags');
+  frags.innerHTML = '';
+
+  TEST_LINES.forEach((line, i) => {
+    const stripped = line.text.replace(/[.,?!']+/g, '').replace(/\s+/g, ' ').trim();
+
+    const mf = document.createElement('div');
+    mf.className = 'mf';
+    mf.dataset.original = line.text;
+    mf.dataset.idx = i;
+
+    const spk = document.createElement('div');
+    spk.className = 'mf-speaker';
+    spk.textContent = line.speaker || '';
+
+    const inputWrap = document.createElement('div');
+    inputWrap.className = 'mf-input-wrap';
+
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'mf-input';
+    inp.placeholder = stripped;
+    inp.autocomplete = 'off';
+    inp.spellcheck = false;
+
+    const bar = document.createElement('div');
+    bar.className = 'mf-score-bar';
+
+    const comparison = document.createElement('div');
+    comparison.className = 'mf-comparison';
+
+    const origRow = document.createElement('div');
+    origRow.className = 'mf-original-row';
+    origRow.innerHTML = `<strong>Original</strong>${line.text}`;
+
+    const aiNote = document.createElement('div');
+    aiNote.className = 'mf-ai-note';
+
+    const linePct = document.createElement('div');
+    linePct.className = 'mf-line-pct';
+
+    comparison.appendChild(origRow);
+    comparison.appendChild(aiNote);
+    inputWrap.appendChild(inp);
+    inputWrap.appendChild(bar);
+    mf.appendChild(spk);
+    mf.appendChild(inputWrap);
+    mf.appendChild(linePct);
+    mf.appendChild(comparison);
+    frags.appendChild(mf);
+  });
+
+  screen.style.display = 'block';
+  requestAnimationFrame(() => requestAnimationFrame(() => screen.classList.add('visible', 'shown')));
+
+  document.getElementById('mem-submit').addEventListener('click', evaluateWithAI, { once: true });
+  document.getElementById('mem-restart').addEventListener('click', restartSystem, { once: true });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AI EVALUATION via Anthropic API
+// ═══════════════════════════════════════════════════════════════════
+async function evaluateWithAI() {
+  const btn = document.getElementById('mem-submit');
+  btn.disabled = true;
+  btn.classList.add('loading');
+
+  // Gather inputs
+  const frags   = document.querySelectorAll('.mf');
+  const entries = [];
+  frags.forEach((frag, i) => {
+    const inp  = frag.querySelector('.mf-input');
+    inp.disabled = true;
+    entries.push({
+      original: frag.dataset.original,
+      user:     inp.value.trim(),
+      line:     TEST_LINES[i],
+    });
+  });
+
+  // Show AI thinking
+  document.getElementById('ai-thinking').classList.add('visible');
+
+  // Build prompt
+  const linesBlock = entries.map((e, i) =>
+    `Line ${i + 1} [${e.line.speaker || 'narrator'}]\n  Original : "${e.original}"\n  User input: "${e.user || '(empty)'}"`
+  ).join('\n\n');
+
+  const prompt = `You are a precise linguistic analysis system embedded in an interactive art piece about language reduction.
+
+The artwork is based on the screenplay "Her" (2013) by Spike Jonze. The user watched punctuation marks being physically removed from dialogue lines and then tried to reconstruct each line from memory.
+
+Analyse the user's recall of each dialogue line. For EACH line return:
+- score: integer 0–100 representing nuance match (consider word choice, emotional register, rhythm, hesitation markers, and intent — not just lexical overlap)
+- note: one cold, precise sentence (max 18 words) describing what was preserved or lost
+
+Then return an overall score (weighted average) and a verdict paragraph (2–3 sentences, analytical, cold tone — like a system report, not a human comment).
+
+IMPORTANT: Respond ONLY with valid JSON, no markdown, no extra text. Use this exact structure:
+{
+  "lines": [
+    { "score": 0, "note": "..." },
+    ...
+  ],
+  "overall": 0,
+  "verdict": "..."
+}
+
+Dialogue to analyse:
+${linesBlock}`;
+
+  let result = null;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    const data = await response.json();
+    const raw  = data.content?.map(c => c.text || '').join('') || '';
+    const clean = raw.replace(/```json|```/g, '').trim();
+    result = JSON.parse(clean);
+  } catch (err) {
+    // Fallback: local scoring
+    result = localScore(entries);
+  }
+
+  document.getElementById('ai-thinking').classList.remove('visible');
+  renderResults(result, entries);
+}
+
+// ─── LOCAL FALLBACK SCORER ────────────────────────────────────────
+function localScore(entries) {
+  function norm(s) {
+    return s.toLowerCase().replace(/[.,?!'"]+/g, '').replace(/\s+/g, ' ').trim();
+  }
+  function f1(a, b) {
+    const at = norm(a).split(' ').filter(Boolean);
+    const bt = norm(b).split(' ').filter(Boolean);
+    if (!at.length && !bt.length) return 1;
+    if (!bt.length) return 0;
+    const m = at.filter(t => bt.includes(t)).length;
+    const p = m / bt.length, r = m / at.length;
+    return p + r === 0 ? 0 : 2 * p * r / (p + r);
+  }
+  function lev(a, b) {
+    a = norm(a); b = norm(b);
+    const m = a.length, n = b.length;
+    const dp = Array.from({ length: m + 1 }, (_, i) =>
+      Array.from({ length: n + 1 }, (_, j) => i === 0 ? j : j === 0 ? i : 0));
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    return 1 - dp[m][n] / Math.max(m, n, 1);
+  }
+
+  const lines = entries.map(e => {
+    if (!e.user) return { score: 0, note: 'No input detected. Signal absent.' };
+    const sc = Math.round((f1(e.original, e.user) * 0.6 + lev(e.original, e.user) * 0.4) * 100);
+    const note = sc >= 85 ? 'Lexical fidelity high. Emotional residue partially preserved.'
+               : sc >= 60 ? 'Structural memory intact. Nuance shows moderate degradation.'
+               : sc >= 35 ? 'Significant semantic drift. Original register lost.'
+               :             'Signal collapse. Reconstruction bears minimal resemblance.';
+    return { score: sc, note };
+  });
+
+  const overall = Math.round(lines.reduce((a, b) => a + b.score, 0) / lines.length);
+  const verdict = overall >= 80
+    ? 'Memory retention registers above threshold. The system notes that language survived reduction with minimal semantic loss. Anomaly recorded.'
+    : overall >= 55
+    ? 'Partial signal recovery. Key emotional inflections — the pauses, the hesitations encoded by punctuation — show measurable degradation. The words remain; their weight does not.'
+    : 'Significant memory collapse detected. Punctuation was not ornamental — it was structural. Without it, dialogue decays into semantic approximation. 8,316 instances. Reduced to this.';
+
+  return { lines, overall, verdict };
+}
+
+// ─── RENDER RESULTS ───────────────────────────────────────────────
+function renderResults(result, entries) {
+  const frags = document.querySelectorAll('.mf');
+
+  // Per-line scores
+  frags.forEach((frag, i) => {
+    const line = result.lines[i];
+    if (!line) return;
+    const sc  = line.score;
+    const bar = frag.querySelector('.mf-score-bar');
+    const pct = frag.querySelector('.mf-line-pct');
+    const note = frag.querySelector('.mf-ai-note');
+
+    frag.classList.add('scored', 'revealed');
+    pct.textContent = `${sc}%`;
+
+    setTimeout(() => {
+      bar.style.width = sc + '%';
+    }, 100 + i * 80);
+
+    setTimeout(() => {
+      note.textContent = line.note;
+      note.classList.add('shown');
+    }, 400 + i * 80);
+  });
+
+  // Overall score
+  const pctEl   = document.getElementById('score-big');
+  const barFill  = document.getElementById('score-bar-fill');
+  const table    = document.getElementById('score-table');
+  const verdict  = document.getElementById('score-verdict');
+  const restart  = document.getElementById('mem-restart');
+  const overall  = result.overall;
+
+  const perfect  = result.lines.filter(l => l.score >= 90).length;
+  const partial  = result.lines.filter(l => l.score >= 50 && l.score < 90).length;
+  const lost     = result.lines.filter(l => l.score < 50).length;
+
+  setTimeout(() => {
+    pctEl.textContent = overall + '%';
+    pctEl.classList.add('shown');
+  }, 300);
+
+  setTimeout(() => {
+    barFill.style.width = overall + '%';
+  }, 500);
+
+  table.innerHTML = `
+    <div class="st-row"><span class="st-label">Lines evaluated</span><span class="st-val">${result.lines.length}</span></div>
+    <div class="st-row"><span class="st-label">High fidelity ≥90%</span><span class="st-val">${perfect}</span></div>
+    <div class="st-row"><span class="st-label">Partial recall 50–89%</span><span class="st-val">${partial}</span></div>
+    <div class="st-row"><span class="st-label">Signal loss &lt;50%</span><span class="st-val">${lost}</span></div>
+    <div class="st-row"><span class="st-label">Overall nuance match</span><span class="st-val">${overall}%</span></div>
+  `;
+  setTimeout(() => table.classList.add('shown'), 600);
+
+  setTimeout(() => {
+    verdict.textContent = result.verdict;
+    verdict.classList.add('shown');
+  }, 900);
+
+  setTimeout(() => restart.classList.add('shown'), 1400);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RESTART
+// ═══════════════════════════════════════════════════════════════════
+function restartSystem() {
+  const screen = document.getElementById('memory-screen');
+  screen.classList.remove('shown');
+  setTimeout(() => {
+    screen.classList.remove('visible');
+    screen.style.display = 'none';
+
+    // Reset score panel
+    document.getElementById('score-big').textContent = '—';
+    document.getElementById('score-big').classList.remove('shown');
+    document.getElementById('score-bar-fill').style.width = '0%';
+    document.getElementById('score-table').innerHTML = '';
+    document.getElementById('score-table').classList.remove('shown');
+    document.getElementById('score-verdict').textContent = '';
+    document.getElementById('score-verdict').classList.remove('shown');
+    document.getElementById('mem-restart').classList.remove('shown');
+    document.getElementById('ai-thinking').classList.remove('visible');
+    const submitBtn = document.getElementById('mem-submit');
+    submitBtn.disabled = false;
+    submitBtn.classList.remove('loading');
+
+    // Reset physics
+    fallingBodies.forEach(fb => Matter.Composite.remove(world, fb.body));
+    fallingBodies = [];
+    deformLevel   = 0;
+
+    document.querySelectorAll('.dialogue-line').forEach(el => {
+      el.style.fontWeight    = '';
+      el.style.letterSpacing = '';
+    });
+    document.querySelectorAll('.speaker-label').forEach(el => el.style.fontWeight = '');
+    document.querySelectorAll('.word-tok').forEach(el => el.style.transform = '');
+
+    document.getElementById('sys-inner').innerHTML = '<span id="sys-hint">drop punctuation here</span>';
+    document.getElementById('dr-weight').textContent  = 'wt 400';
+    document.getElementById('dr-spacing').textContent = 'ls −0.015em';
+    const hud = document.getElementById('punct-hud');
+    if (hud) { hud.style.opacity = '1'; hud.textContent = ''; }
+
+    buildScript();
+
+    document.getElementById('mem-submit').addEventListener('click', evaluateWithAI, { once: true });
+    document.getElementById('mem-restart').addEventListener('click', restartSystem, { once: true });
+  }, 700);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  buildScript();
+  initPhysics();
+  initCanvas();
+});
+</script>
+</body>
+</html>
